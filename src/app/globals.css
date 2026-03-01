@@ -309,6 +309,48 @@
     text-underline-offset: 2px;
   }
 
+  /* Gov link badges — override Streamdown's inline utility classes */
+  & a[href*="matsne.gov.ge"],
+  & a[href*="labourmigration.moh.gov.ge"],
+  & a[href*="worknet.moh.gov.ge"],
+  & a[href*="geoconsul.gov.ge"],
+  & a[href*="police.ge"] {
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 0.35em;
+    padding: 0.1em 0.55em;
+    font-size: 0.8em !important;
+    font-weight: 500 !important;
+    line-height: 1.5;
+    text-decoration: none !important;
+    border-radius: 9999px;
+    background: var(--secondary);
+    color: var(--foreground) !important;
+    border: 1px solid var(--border);
+    transition: background 0.15s, border-color 0.15s;
+    white-space: nowrap;
+    vertical-align: middle;
+    margin: 0 0.1em;
+  }
+
+  & a[href*="matsne.gov.ge"]::before,
+  & a[href*="labourmigration.moh.gov.ge"]::before,
+  & a[href*="worknet.moh.gov.ge"]::before,
+  & a[href*="geoconsul.gov.ge"]::before,
+  & a[href*="police.ge"]::before {
+    content: "↗";
+    font-size: 0.85em;
+  }
+
+  & a[href*="matsne.gov.ge"]:hover,
+  & a[href*="labourmigration.moh.gov.ge"]:hover,
+  & a[href*="worknet.moh.gov.ge"]:hover,
+  & a[href*="geoconsul.gov.ge"]:hover,
+  & a[href*="police.ge"]:hover {
+    background: var(--accent);
+    border-color: var(--ring);
+  }
+
   & hr {
     border: none;
     border-top: 1px solid var(--border);

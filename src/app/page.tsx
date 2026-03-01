@@ -27,7 +27,26 @@ import {
 } from "@/components/ui/chat-thread";
 
 /* ------------------------------------------------------------------ */
-/*  ChatView — keyed by conversation id so useChat reinitializes      */
+/*  Helper: extract text from a UIMessage (handles SDK v3 parts)      */
+/* ------------------------------------------------------------------ */
+
+function getMessageText(msg: UIMessage): string {
+  if (msg.parts?.length > 0) {
+    return msg.parts
+      .filter((p) => p.type === "text")
+      .map((p) => {
+        const t = (p as { text: unknown }).text;
+        return typeof t === "string" ? t : String(t ?? "");
+      })
+      .join("");
+  }
+  // Fallback for legacy messages with content field
+  const raw = msg as unknown as Record<string, unknown>;
+  return typeof raw.content === "string" ? raw.content : "";
+}
+
+/* ------------------------------------------------------------------ */
+/*  ChatView                                                           */
 /* ------------------------------------------------------------------ */
 
 interface ChatViewProps {
@@ -37,7 +56,7 @@ interface ChatViewProps {
     React.SetStateAction<Record<string, "like" | "dislike">>
   >;
   onMessagesChange: (messages: UIMessage[]) => void;
-  onNewChat: () => void;
+  onCreateConversation: () => void;
 }
 
 function ChatView({
@@ -45,7 +64,7 @@ function ChatView({
   feedback,
   setFeedback,
   onMessagesChange,
-  onNewChat,
+  onCreateConversation,
 }: ChatViewProps) {
   const { messages, sendMessage, status } = useChat({
     messages: conversation?.messages ?? [],
@@ -106,14 +125,13 @@ function ChatView({
             name: file.name,
             type: file.type,
             size: file.size,
-            url: text, // extracted text stored here for later use
+            url: text,
           },
         ]);
       } catch {
         alert("Failed to read file: " + file.name);
       }
     }
-    // Reset so the same file can be selected again
     e.target.value = "";
   };
 
@@ -121,12 +139,6 @@ function ChatView({
   const onComposerSubmit = useCallback(
     (text: string) => {
       if ((!text.trim() && attachedFiles.length === 0) || isLoading) return;
-
-      // If no conversation yet, create one first
-      if (!conversation) {
-        onNewChat();
-        return;
-      }
 
       // Build message with file context
       let messageText = text;
@@ -141,16 +153,21 @@ function ChatView({
         setAttachedFiles([]);
       }
 
+      // Ensure a conversation exists before sending
+      if (!conversation) {
+        onCreateConversation();
+      }
+
       sendMessage({ text: messageText });
       setInput("");
     },
-    [attachedFiles, isLoading, conversation, onNewChat, sendMessage],
+    [attachedFiles, isLoading, conversation, onCreateConversation, sendMessage],
   );
 
   const hasMessages = messages.length > 0;
 
-  // Show landing when no conversation or no messages yet
-  if (!conversation || !hasMessages) {
+  // Show landing when no messages yet
+  if (!hasMessages) {
     return (
       <>
         <main className="flex flex-1 items-center justify-center px-4">
@@ -201,11 +218,7 @@ function ChatView({
             {messages.map((msg, index) => {
               if (msg.role === "system") return null;
 
-              const textParts = msg.parts.filter(
-                (p): p is { type: "text"; text: string } =>
-                  p.type === "text",
-              );
-              const text = textParts.map((p) => p.text).join("");
+              const text = getMessageText(msg);
 
               const isLastAssistant =
                 msg.role === "assistant" &&
@@ -326,6 +339,8 @@ export default function Home() {
   const [feedback, setFeedback] = useState<Record<string, "like" | "dislike">>(
     () => loadFeedback(),
   );
+  // chatKey controls ChatView remounting — only changes on explicit conversation switch
+  const [chatKey, setChatKey] = useState(() => `new-${Date.now()}`);
 
   // Load conversations on mount
   useEffect(() => {
@@ -333,7 +348,10 @@ export default function Home() {
     setConversations(convs);
     if (convs.length > 0) {
       const latest = getConversation(convs[0].id);
-      if (latest) setActiveConv(latest);
+      if (latest) {
+        setActiveConv(latest);
+        setChatKey(latest.id);
+      }
     }
   }, []);
 
@@ -347,10 +365,19 @@ export default function Home() {
     [],
   );
 
-  const handleNewChat = useCallback(() => {
+  // Called from ChatView when first message is sent and no conversation exists.
+  // Does NOT change chatKey, so ChatView stays mounted and sendMessage continues.
+  const handleCreateConversation = useCallback(() => {
     const conv = createConversation();
     saveConversation(conv);
     setActiveConv(conv);
+    refreshConversations();
+  }, [refreshConversations]);
+
+  // Called from sidebar "New Chat" button — forces a clean remount
+  const handleNewChat = useCallback(() => {
+    setActiveConv(null);
+    setChatKey(`new-${Date.now()}`);
     refreshConversations();
     setSidebarOpen(false);
   }, [refreshConversations]);
@@ -358,7 +385,10 @@ export default function Home() {
   const handleSelectConversation = useCallback(
     (id: string) => {
       const conv = getConversation(id);
-      if (conv) setActiveConv(conv);
+      if (conv) {
+        setActiveConv(conv);
+        setChatKey(id);
+      }
       setSidebarOpen(false);
     },
     [],
@@ -368,13 +398,15 @@ export default function Home() {
     (id: string) => {
       deleteConversation(id);
       refreshConversations();
-      // If we deleted the active conversation, pick the next one (or null)
       setActiveConv((prev) => {
         if (prev?.id !== id) return prev;
         const remaining = getConversations();
         if (remaining.length > 0) {
-          return getConversation(remaining[0].id);
+          const next = getConversation(remaining[0].id);
+          if (next) setChatKey(next.id);
+          return next;
         }
+        setChatKey(`new-${Date.now()}`);
         return null;
       });
     },
@@ -391,10 +423,7 @@ export default function Home() {
         if (title === "New Chat" && messages.length > 0) {
           const firstUser = messages.find((m) => m.role === "user");
           if (firstUser) {
-            const textParts = firstUser.parts.filter(
-              (p): p is { type: "text"; text: string } => p.type === "text",
-            );
-            const text = textParts.map((p) => p.text).join("");
+            const text = getMessageText(firstUser);
             if (text) {
               title = text.slice(0, 50) + (text.length > 50 ? "..." : "");
               updateConversationTitle(prev.id, title);
@@ -452,14 +481,14 @@ export default function Home() {
         </div>
       </header>
 
-      {/* Chat view — keyed by conversation id for clean remount */}
+      {/* Chat view — keyed by chatKey for controlled remounting */}
       <ChatView
-        key={activeConv?.id ?? "empty"}
+        key={chatKey}
         conversation={activeConv}
         feedback={feedback}
         setFeedback={setFeedback}
         onMessagesChange={handleMessagesChange}
-        onNewChat={handleNewChat}
+        onCreateConversation={handleCreateConversation}
       />
     </div>
   );

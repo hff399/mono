@@ -1,16 +1,8 @@
 import { openai } from "@ai-sdk/openai";
-import { streamText, convertToModelMessages, createUIMessageStream, createUIMessageStreamResponse } from "ai";
+import { streamText, convertToModelMessages } from "ai";
 import { KNOWLEDGE_BASE } from "@/lib/knowledge";
 
 export const maxDuration = 60;
-
-const responseCache = new Map<string, string>();
-
-async function hashMessages(messages: Array<{ role: string; content: unknown }>): Promise<string> {
-  const text = JSON.stringify(messages.map(m => ({ role: m.role, content: m.content })));
-  const buffer = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
-  return Array.from(new Uint8Array(buffer)).map(b => b.toString(16).padStart(2, "0")).join("");
-}
 
 const MAX_INPUT_MESSAGES = 20;
 const MAX_OUTPUT_TOKENS = 2048;
@@ -91,28 +83,32 @@ You have access to the following knowledge base covering Georgian immigration an
 ${KNOWLEDGE_BASE}
 </knowledge>
 
+RULE 9 — LINK TO RELEVANT LAWS:
+When discussing a specific law or legal topic, include a link to the relevant official source. Use these links:
+- Law of Georgia on Labour Migration: https://www.matsne.gov.ge/document/view/2806732?publication=6
+- Law of Georgia "On the Legal Status of Aliens and Stateless Persons": https://www.matsne.gov.ge/en/document/view/2278806?publication=20
+- Ordinance №70 "Procedure for Granting the Right to Engage in Labor Activity": https://www.matsne.gov.ge/ka/document/view/6791218?publication=0
+- Labour Migration Portal (work permit applications): https://labourmigration.moh.gov.ge
+- Worknet (employer vacancy postings): https://worknet.moh.gov.ge
+- Geoconsul (D1 visa applications): https://geoconsul.gov.ge/en
+- Matsne — Legislative Herald of Georgia: https://www.matsne.gov.ge/ka
+- Ministry of Internal Affairs of Georgia: https://police.ge/
+
+When to link:
+- Discussing work permits → link to Ordinance №70 and the Labour Migration Portal
+- Discussing the labour market test / vacancy posting → link to Worknet
+- Discussing residence permits or legal status → link to Law on Legal Status of Aliens
+- Discussing D1 visa applications → link to Geoconsul and Ordinance №70
+- Discussing the overall reform or "labour migrant" definitions → link to Law on Labour Migration
+- Discussing penalties or enforcement → link to Law on Labour Migration
+Include links naturally in your response (e.g., "You can apply through the [Labour Migration Portal](https://labourmigration.moh.gov.ge)"). Do not dump all links at once — only include the ones relevant to the topic being discussed.
+
 Answer questions based on this knowledge. If the user asks about something not covered, let them know and suggest they consult a legal professional or visit the official resources (matsne.gov.ge, labourmigration.moh.gov.ge).`;
 
 export async function POST(req: Request) {
   const { messages } = await req.json();
 
   const trimmedMessages = messages.slice(-MAX_INPUT_MESSAGES);
-  const hash = await hashMessages(trimmedMessages);
-
-  const cachedText = responseCache.get(hash);
-  if (cachedText) {
-    return createUIMessageStreamResponse({
-      stream: createUIMessageStream({
-        execute: ({ writer }) => {
-          const id = "cached";
-          writer.write({ type: "text-start", id });
-          writer.write({ type: "text-delta", id, delta: cachedText });
-          writer.write({ type: "text-end", id });
-        },
-      }),
-    });
-  }
-
   const modelMessages = await convertToModelMessages(trimmedMessages);
 
   const result = streamText({
@@ -121,8 +117,6 @@ export async function POST(req: Request) {
     messages: modelMessages,
     maxOutputTokens: MAX_OUTPUT_TOKENS,
   });
-
-  result.text.then(text => responseCache.set(hash, text));
 
   return result.toUIMessageStreamResponse();
 }

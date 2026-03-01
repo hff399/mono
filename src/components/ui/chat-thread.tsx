@@ -5,6 +5,7 @@ import { Copy, ThumbsUp, ThumbsDown, Share2, ChevronDown, Pencil, Check } from "
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "motion/react";
 import { MessageResponse } from "@/components/ai-elements/message";
+import { injectSourceLinks } from "@/lib/source-links";
 
 export interface Message {
   id: string;
@@ -51,7 +52,7 @@ export const AssistantMessage: FC<AssistantMessageProps> = ({
     <div className="flex flex-col gap-4 pb-4">
       {/* Message content - full width, markdown rendered */}
       <div className="prose-chat text-base leading-relaxed text-foreground">
-        <MessageResponse>{content}</MessageResponse>
+        <MessageResponse>{isStreaming ? content : injectSourceLinks(content)}</MessageResponse>
       </div>
 
       {/* Inline children (e.g. tool results) */}

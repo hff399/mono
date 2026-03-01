@@ -110,10 +110,13 @@ export const Sidebar: FC<SidebarProps> = ({
                 <ul className="flex flex-col gap-0.5 px-2">
                   {conversations.map((conv) => (
                     <li key={conv.id}>
-                      <button
+                      <div
+                        role="button"
+                        tabIndex={0}
                         onClick={() => onSelect(conv.id)}
+                        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") onSelect(conv.id); }}
                         className={cn(
-                          "group/item relative flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm",
+                          "group/item relative flex w-full cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-left text-sm",
                           "transition-colors hover:bg-[var(--sidebar-accent)]",
                           activeId === conv.id
                             ? "bg-[var(--sidebar-accent)] text-[var(--sidebar-accent-foreground)]"
@@ -144,7 +147,7 @@ export const Sidebar: FC<SidebarProps> = ({
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                         </button>
-                      </button>
+                      </div>
                     </li>
                   ))}
                 </ul>
